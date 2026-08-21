@@ -1,6 +1,6 @@
 import { mulberry32 } from './rng'
 import { rectFullyInside, rectsOverlap, type Rect } from './geometry'
-import type { CutoutInput, LayoutInputs, LayoutResult, Orientation, PlankPiece, RoomInput } from './types'
+import type { CutoutInput, LayoutInputs, LayoutResult, ManualRowInput, Orientation, PlankPiece, RoomInput } from './types'
 
 const EPS = 1e-6
 const MAX_SAMPLE_ATTEMPTS = 200
@@ -84,6 +84,49 @@ function pickFirstCut(params: PickFirstCutParams): number {
   return Math.min(minFragmentCm, plankLength)
 }
 
+interface ValidateManualFirstCutParams {
+  rowIndex: number
+  firstCutCm: number
+  runAxisLength: number
+  plankLength: number
+  minFragmentCm: number
+  effectiveMinOffset: number
+  prevFirstCut: number | null
+  warnings: string[]
+}
+
+function validateManualFirstCut(params: ValidateManualFirstCutParams): number {
+  const { rowIndex, firstCutCm, runAxisLength, plankLength, minFragmentCm, effectiveMinOffset, prevFirstCut, warnings } =
+    params
+  let value = firstCutCm
+
+  if (!(value > 0)) {
+    warnings.push(
+      `Row ${rowIndex + 1}: manual first-cut length must be a positive number — using a full plank (${plankLength}cm) instead.`,
+    )
+    value = plankLength
+  } else if (value > plankLength) {
+    warnings.push(
+      `Row ${rowIndex + 1}: manual first-cut length of ${value.toFixed(1)}cm exceeds the plank length (${plankLength}cm) — clamped to ${plankLength}cm.`,
+    )
+    value = plankLength
+  }
+
+  if (!isSliverValid(value, runAxisLength, plankLength, minFragmentCm)) {
+    warnings.push(
+      `Row ${rowIndex + 1}: manual first-cut length of ${value.toFixed(1)}cm leaves a sliver shorter than the minimum plank length of ${minFragmentCm.toFixed(1)}cm at the end of the row.`,
+    )
+  }
+
+  if (prevFirstCut !== null && circularOffset(value, prevFirstCut, plankLength) < effectiveMinOffset - EPS) {
+    warnings.push(
+      `Row ${rowIndex + 1}: manual first-cut length of ${value.toFixed(1)}cm does not satisfy the minimum joint offset of ${effectiveMinOffset.toFixed(1)}cm versus the previous row.`,
+    )
+  }
+
+  return value
+}
+
 function buildRect(
   orientation: Orientation,
   rowOffset: number,
@@ -149,7 +192,8 @@ function applyMinRowWidth(
 }
 
 export function generateLayout(inputs: LayoutInputs, seed: number): LayoutResult {
-  const { room, expansionGapCm, cutouts, plank, minOffsetCm, minPlankLengthCm, minPlankWidthCm, orientation } = inputs
+  const { room, expansionGapCm, cutouts, manualRows, plank, minOffsetCm, minPlankLengthCm, minPlankWidthCm, orientation } =
+    inputs
   const warnings: string[] = []
 
   const plankLength = plank.length
@@ -213,23 +257,43 @@ export function generateLayout(inputs: LayoutInputs, seed: number): LayoutResult
     rawRowThicknesses.push(thickness)
     consumedRow += thickness
   }
+  // Row thickness is always assigned automatically, even for manual rows — a manual
+  // entry only overrides the row's first-cut length, never its width/thickness.
   const rowThicknesses = applyMinRowWidth(rawRowThicknesses, plankWidth, effectiveMinPlankWidthCm, warnings)
+
+  if (manualRows.length > rowThicknesses.length) {
+    warnings.push(
+      `${manualRows.length} manual row(s) were specified, but the room only fits ${rowThicknesses.length} row(s) of planks — the extra manual row(s) beyond row ${rowThicknesses.length} were ignored.`,
+    )
+  }
 
   const planks: PlankPiece[] = []
   let prevFirstCut: number | null = null
   let rowOffset = 0
 
   rowThicknesses.forEach((rowThickness, rowIndex) => {
-    const firstCut = pickFirstCut({
-      rowIndex,
-      runAxisLength,
-      plankLength,
-      minFragmentCm,
-      effectiveMinOffset,
-      prevFirstCut,
-      rand,
-      warnings,
-    })
+    const manualRow: ManualRowInput | undefined = manualRows[rowIndex]
+    const firstCut = manualRow
+      ? validateManualFirstCut({
+          rowIndex,
+          firstCutCm: manualRow.firstCutCm,
+          runAxisLength,
+          plankLength,
+          minFragmentCm,
+          effectiveMinOffset,
+          prevFirstCut,
+          warnings,
+        })
+      : pickFirstCut({
+          rowIndex,
+          runAxisLength,
+          plankLength,
+          minFragmentCm,
+          effectiveMinOffset,
+          prevFirstCut,
+          rand,
+          warnings,
+        })
     prevFirstCut = firstCut
 
     let pos = 0
@@ -256,6 +320,7 @@ export function generateLayout(inputs: LayoutInputs, seed: number): LayoutResult
           height: rect.height,
           isCut,
           isClippedByObstacle: clipped,
+          isManual: Boolean(manualRow),
         })
       }
 

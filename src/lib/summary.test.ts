@@ -12,6 +12,7 @@ function plank(overrides: Partial<PlankPiece>): PlankPiece {
     height: 120,
     isCut: false,
     isClippedByObstacle: false,
+    isManual: false,
     ...overrides,
   }
 }
@@ -21,6 +22,7 @@ describe('computeSummary', () => {
     room: { width: 400, length: 300 },
     expansionGapCm: 0,
     cutouts: [],
+    manualRows: [],
     plank: { length: 120, width: 19 },
     minOffsetCm: 30,
     minPlankLengthCm: 40,
