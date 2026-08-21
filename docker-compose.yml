@@ -1,0 +1,11 @@
+services:
+  laminate-layout-calculator:
+    build: .
+    container_name: laminate-layout-calculator
+    restart: unless-stopped
+    networks:
+      - swag_default
+
+networks:
+  swag_default:
+    external: true
