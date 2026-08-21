@@ -56,6 +56,14 @@ export interface LayoutResult {
   warnings: string[]
 }
 
+export interface SavedLayout {
+  id: string
+  name: string
+  createdAt: number
+  inputs: LayoutInputs
+  seed: number
+}
+
 export interface SummaryStats {
   fullPlanksCount: number
   cutPlanksCount: number

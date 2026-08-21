@@ -153,6 +153,12 @@ button:hover {
   margin: 6px 0 0;
 }
 
+.error-text {
+  font-size: 12px;
+  color: #c0392b;
+  margin: 6px 0 0;
+}
+
 .summary-list {
   list-style: none;
   padding: 0;
@@ -197,4 +203,45 @@ button:hover {
   max-width: 100%;
   max-height: calc(100vh - 48px);
   border: 1px solid var(--border);
+}
+
+.saved-layouts-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.saved-layouts-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.saved-layout-name {
+  font-weight: 600;
+}
+
+.saved-layout-date {
+  color: var(--text-muted);
+  font-size: 12px;
+  display: block;
+}
+
+.saved-layout-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.save-row {
+  display: flex;
+  gap: 6px;
+}
+
+.save-row input {
+  flex: 1;
 }
