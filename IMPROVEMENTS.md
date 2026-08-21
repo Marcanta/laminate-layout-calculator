@@ -1,5 +1,3 @@
 # Improvements
 
-- setup a row manually, for an existing started layout.
-
-- avoid waste, and reuse previously offcut
+- Save the current layout, and maybe export it.

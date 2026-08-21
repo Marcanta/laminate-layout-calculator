@@ -13,6 +13,7 @@ function plank(overrides: Partial<PlankPiece>): PlankPiece {
     isCut: false,
     isClippedByObstacle: false,
     isManual: false,
+    isReusedOffcut: false,
     ...overrides,
   }
 }
@@ -54,6 +55,24 @@ describe('computeSummary', () => {
     const summary = computeSummary(layout, inputs)
     // 9 * 1.10 = 9.9 -> rounds up to 10
     expect(summary.planksToBuy).toBe(10)
+  })
+
+  it('excludes reused offcuts from the boards-consumed base for the waste calculation', () => {
+    const layout: LayoutResult = {
+      planks: [plank({ isCut: true, isReusedOffcut: true }), ...Array.from({ length: 8 }, () => plank({}))],
+      rows: 1,
+      seed: 1,
+      warnings: [],
+    }
+    const summary = computeSummary(layout, inputs)
+    expect(summary.totalPlanksUsed).toBe(9)
+    expect(summary.offcutsReusedCount).toBe(1)
+    expect(summary.boardsConsumed).toBe(8)
+    // 8 * 1.10 = 8.8 -> rounds up to 9 (vs. 10 if reuse weren't excluded, per the test above)
+    expect(summary.planksToBuy).toBe(9)
+    // coverage must track boardsConsumed (8), not totalPlanksUsed (9) -- a reused
+    // offcut doesn't consume a fresh board's worth of material.
+    expect(summary.coverageAreaM2).toBeCloseTo(summary.boardsConsumed * summary.plankAreaM2, 6)
   })
 
   it('computes area stats from room, cutouts, and plank dimensions', () => {

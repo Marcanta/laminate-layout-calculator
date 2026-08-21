@@ -86,25 +86,26 @@ describe('generateLayout', () => {
     }
   })
 
-  it('produces a single truncated plank when the plank is longer than the room', () => {
+  it('fully tiles each row with truncated planks when the plank is longer than the room', () => {
+    // plank.length 200 vs. room.length 80: no piece can ever be a full, uncut plank.
+    // A row's starter may still be a short reused offcut (see 'generateLayout offcut
+    // reuse' below), which then needs a second piece to finish the row -- so this only
+    // asserts full coverage and isCut, not a fixed plank count per row.
     const inputs = baseInputs({
       room: { width: 100, length: 80 },
       plank: { length: 200, width: 19 },
     })
     const result = generateLayout(inputs, 1)
     const runIsLength = inputs.orientation === 'along-length'
-    const byRow = new Map<number, number>()
-    for (const p of result.planks) {
-      byRow.set(p.row, (byRow.get(p.row) ?? 0) + 1)
-    }
-    for (const count of byRow.values()) {
-      expect(count).toBe(1)
-    }
     const runAxisLength = runIsLength ? inputs.room.length : inputs.room.width
+    const totalsByRow = new Map<number, number>()
     for (const p of result.planks) {
       const len = runIsLength ? p.height : p.width
-      expect(len).toBeCloseTo(runAxisLength, 3)
       expect(p.isCut).toBe(true)
+      totalsByRow.set(p.row, (totalsByRow.get(p.row) ?? 0) + len)
+    }
+    for (const total of totalsByRow.values()) {
+      expect(total).toBeCloseTo(runAxisLength, 3)
     }
   })
 
@@ -280,6 +281,103 @@ describe('generateLayout manual rows', () => {
     const firstCuts = firstCutsByRow(inputs, result.planks)
     expect(firstCuts[0]).toBeCloseTo(inputs.plank.length, 6)
     expect(result.warnings.some((w) => w.includes('must be a positive number'))).toBe(true)
+  })
+})
+
+describe('generateLayout offcut reuse', () => {
+  function rowStarter(planks: ReturnType<typeof generateLayout>['planks'], row: number, runIsLength: boolean) {
+    return [...planks.filter((p) => p.row === row)].sort((a, b) => (runIsLength ? a.y - b.y : a.x - b.x))[0]
+  }
+
+  it("reuses a poolable leftover from a manual row as a later auto row's starter", () => {
+    // room.width 380 = 19 * 20: every row stays a full 19cm wide, so the row-width guard
+    // (below) never disqualifies a candidate here.
+    const inputs = baseInputs({
+      room: { width: 380, length: 300 },
+      manualRows: [
+        { id: 'm1', firstCutCm: 60 }, // leftover 120-60=60cm, >= minPlankLengthCm(40) -> poolable
+        { id: 'm2', firstCutCm: 90 }, // leftover 30cm, < 40 -> too short to pool
+      ],
+    })
+    const result = generateLayout(inputs, 1)
+    const firstCuts = firstCutsByRow(inputs, result.planks)
+    expect(firstCuts[2]).toBeCloseTo(60, 6)
+
+    const starter = rowStarter(result.planks, 2, true)
+    expect(starter.isReusedOffcut).toBe(true)
+    expect(starter.isManual).toBe(false)
+  })
+
+  it('never reuses an offcut that is narrower than the destination row', () => {
+    // Default room.width 400 is not a multiple of plankWidth 19, so applyMinRowWidth
+    // redistributes row 0 down to 10cm wide. Its 60cm leftover is only 10cm wide and
+    // cannot physically cover row 2, which stays a full 19cm wide.
+    const inputs = baseInputs({
+      manualRows: [
+        { id: 'm1', firstCutCm: 60 },
+        { id: 'm2', firstCutCm: 90 },
+      ],
+    })
+    const result = generateLayout(inputs, 1)
+    const starter = rowStarter(result.planks, 2, true)
+    expect(starter.isReusedOffcut).toBe(false)
+  })
+
+  it("pools a row's forced end-of-row trim leftover, not just its starter leftover", () => {
+    // room.length 280, plank.length 120, row 0 manual first-cut 90:
+    // row 0 = [90 (starter, leftover 30 -> too short to pool), 120 (full), 70 (forced
+    // trailing trim, leftover 50 -> poolable)]. Row 1 (auto) should pick up that 50cm
+    // trailing-trim leftover as its own starter.
+    const inputs = baseInputs({
+      room: { width: 380, length: 280 },
+      manualRows: [{ id: 'm1', firstCutCm: 90 }],
+    })
+    const result = generateLayout(inputs, 1)
+    const firstCuts = firstCutsByRow(inputs, result.planks)
+    expect(firstCuts[0]).toBeCloseTo(90, 6)
+    expect(firstCuts[1]).toBeCloseTo(50, 6)
+
+    const starter = rowStarter(result.planks, 1, true)
+    expect(starter.isReusedOffcut).toBe(true)
+    expect(starter.isManual).toBe(false)
+  })
+
+  it("keeps a clamped-to-room offcut's own leftover poolable instead of discarding it", () => {
+    // room.length 30 (run axis) is far shorter than plank.length 120, so every row's
+    // starter gets clamped down to 30cm regardless of the nominal first-cut length.
+    // Row 0 (manual, 100cm nominal) donates a 90cm leftover (120-30) to the pool.
+    // Row 1 reuses that 90cm offcut but is itself clamped to 30cm -- the fix must keep
+    // the offcut's own 60cm remainder (90-30) pooled so row 2 can reuse it too.
+    const inputs = baseInputs({
+      room: { width: 380, length: 30 },
+      minOffsetCm: 0,
+      manualRows: [{ id: 'm1', firstCutCm: 100 }],
+    })
+    const result = generateLayout(inputs, 1)
+
+    expect(rowStarter(result.planks, 1, true).isReusedOffcut).toBe(true)
+    // Fails pre-fix: row 1's clamp silently discarded the leftover instead of re-pooling it.
+    expect(rowStarter(result.planks, 2, true).isReusedOffcut).toBe(true)
+  })
+
+  it("doesn't consume a reused offcut when its starter piece is fully hidden by a cutout", () => {
+    // Row 0 (manual, 60cm) donates a 60cm leftover (120-60) to the pool.
+    // Row 1's starter would reuse that 60cm offcut, but a cutout exactly covering row 1's
+    // band (x 19-38, the row-1 slice) for y 0-60 fully hides that starter piece -- it must
+    // never be placed. Pre-fix, the offcut is spliced out of the pool regardless, so row 2
+    // can no longer reuse it. Post-fix, the pool is untouched and row 2 still can.
+    const inputs = baseInputs({
+      room: { width: 380, length: 300 },
+      minOffsetCm: 0,
+      manualRows: [{ id: 'm1', firstCutCm: 60 }],
+      cutouts: [{ id: 'c1', x: 19, y: 0, width: 19, height: 60 }],
+    })
+    const result = generateLayout(inputs, 1)
+
+    const row1Planks = result.planks.filter((p) => p.row === 1)
+    expect(row1Planks.every((p) => p.y >= 60 - 1e-6)).toBe(true) // the covered starter never got placed
+
+    expect(rowStarter(result.planks, 2, true).isReusedOffcut).toBe(true)
   })
 })
 
