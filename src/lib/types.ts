@@ -11,6 +11,11 @@ export interface CutoutInput {
   height: number
 }
 
+export interface ManualRowInput {
+  id: string
+  firstCutCm: number
+}
+
 export interface PlankInput {
   length: number
   width: number
@@ -22,6 +27,7 @@ export interface LayoutInputs {
   room: RoomInput
   expansionGapCm: number
   cutouts: CutoutInput[]
+  manualRows: ManualRowInput[]
   plank: PlankInput
   minOffsetCm: number
   minPlankLengthCm: number
@@ -39,6 +45,7 @@ export interface PlankPiece {
   height: number
   isCut: boolean
   isClippedByObstacle: boolean
+  isManual: boolean
 }
 
 export interface LayoutResult {

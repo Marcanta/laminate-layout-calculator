@@ -7,6 +7,7 @@ function baseInputs(overrides: Partial<LayoutInputs> = {}): LayoutInputs {
     room: { width: 400, length: 300 },
     expansionGapCm: 0,
     cutouts: [],
+    manualRows: [],
     plank: { length: 120, width: 19 },
     minOffsetCm: 30,
     minPlankLengthCm: 40,
@@ -207,6 +208,78 @@ describe('generateLayout', () => {
     const result = generateLayout(inputs, 1)
     expect(result.planks.length).toBe(0)
     expect(result.warnings.some((w) => w.toLowerCase().includes('expansion gap'))).toBe(true)
+  })
+})
+
+describe('generateLayout manual rows', () => {
+  it('applies manual first-cut lengths exactly and flags those planks as manual', () => {
+    const inputs = baseInputs({
+      manualRows: [
+        { id: 'm1', firstCutCm: 60 },
+        { id: 'm2', firstCutCm: 90 },
+      ],
+    })
+    const result = generateLayout(inputs, 1)
+    const firstCuts = firstCutsByRow(inputs, result.planks)
+    expect(firstCuts[0]).toBeCloseTo(60, 6)
+    expect(firstCuts[1]).toBeCloseTo(90, 6)
+
+    for (const p of result.planks) {
+      expect(p.isManual).toBe(p.row === 0 || p.row === 1)
+    }
+  })
+
+  it('seeds prevFirstCut for the first auto-generated row from the last manual row', () => {
+    const inputs = baseInputs({
+      room: { width: 400, length: 350 },
+      minOffsetCm: 60, // exactly plankLength / 2 — the max achievable offset, a measure-zero target
+      manualRows: [{ id: 'm1', firstCutCm: 50 }],
+    })
+    const result = generateLayout(inputs, 1)
+    const firstCuts = firstCutsByRow(inputs, result.planks)
+    expect(firstCuts[0]).toBeCloseTo(50, 6)
+    // (50 + 120/2) % 120 = 110 — the deterministic tier-3 fallback in pickFirstCut
+    expect(firstCuts[1]).toBeCloseTo(110, 6)
+    expect(result.warnings.some((w) => w.includes('deterministic maximum-offset placement'))).toBe(true)
+  })
+
+  it('ignores manual rows beyond the number of physical rows, with a warning', () => {
+    const inputs = baseInputs({
+      room: { width: 20, length: 300 },
+      minPlankWidthCm: 5,
+      manualRows: [
+        { id: 'm1', firstCutCm: 60 },
+        { id: 'm2', firstCutCm: 60 },
+        { id: 'm3', firstCutCm: 60 },
+        { id: 'm4', firstCutCm: 60 },
+        { id: 'm5', firstCutCm: 60 },
+      ],
+    })
+    expect(() => generateLayout(inputs, 1)).not.toThrow()
+    const result = generateLayout(inputs, 1)
+    expect(result.rows).toBe(2)
+    expect(result.warnings.some((w) => w.includes('manual row'))).toBe(true)
+  })
+
+  it('preserves a manual first-cut that violates constraints, but warns instead of replacing it', () => {
+    const inputs = baseInputs({
+      room: { width: 400, length: 249 },
+      manualRows: [{ id: 'm1', firstCutCm: 5 }],
+    })
+    const result = generateLayout(inputs, 1)
+    const firstCuts = firstCutsByRow(inputs, result.planks)
+    expect(firstCuts[0]).toBeCloseTo(5, 6)
+    expect(result.warnings.length).toBeGreaterThan(0)
+  })
+
+  it('falls back to a full plank when a manual first-cut is not positive, with a warning', () => {
+    const inputs = baseInputs({
+      manualRows: [{ id: 'm1', firstCutCm: 0 }],
+    })
+    const result = generateLayout(inputs, 1)
+    const firstCuts = firstCutsByRow(inputs, result.planks)
+    expect(firstCuts[0]).toBeCloseTo(inputs.plank.length, 6)
+    expect(result.warnings.some((w) => w.includes('must be a positive number'))).toBe(true)
   })
 })
 

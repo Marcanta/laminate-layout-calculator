@@ -54,11 +54,11 @@ const insetRect = computed(() => {
         :y="plank.y"
         :width="plank.width"
         :height="plank.height"
-        :class="['plank', plank.row % 2 === 0 ? 'plank-even' : 'plank-odd', { 'plank-cut': plank.isCut }]"
+        :class="['plank', plank.row % 2 === 0 ? 'plank-even' : 'plank-odd', { 'plank-cut': plank.isCut, 'plank-manual': plank.isManual }]"
         :stroke-width="strokeWidth"
         vector-effect="non-scaling-stroke"
       >
-        <title>Row {{ plank.row + 1 }} · plank {{ i + 1 }} · {{ plank.width.toFixed(1) }}cm x {{ plank.height.toFixed(1) }}cm{{ plank.isCut ? ' (cut)' : '' }}{{ plank.isClippedByObstacle ? ' — cut around obstacle' : '' }}</title>
+        <title>Row {{ plank.row + 1 }} · plank {{ i + 1 }} · {{ plank.width.toFixed(1) }}cm x {{ plank.height.toFixed(1) }}cm{{ plank.isCut ? ' (cut)' : '' }}{{ plank.isClippedByObstacle ? ' — cut around obstacle' : '' }}{{ plank.isManual ? ' — manual row' : '' }}</title>
       </rect>
     </g>
 
@@ -120,6 +120,10 @@ const insetRect = computed(() => {
 
 .plank-cut {
   fill-opacity: 0.85;
+}
+
+.plank-manual {
+  stroke: #2f7d5f;
 }
 
 .cutout {

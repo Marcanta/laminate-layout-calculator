@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { generateLayout } from '../lib/laminateLayout'
 import { randomSeed } from '../lib/rng'
 import { computeSummary } from '../lib/summary'
-import type { CutoutInput, LayoutInputs, Orientation } from '../lib/types'
+import type { CutoutInput, LayoutInputs, ManualRowInput, Orientation } from '../lib/types'
 
 let cutoutCounter = 0
 function nextCutoutId(): string {
@@ -10,11 +10,18 @@ function nextCutoutId(): string {
   return `cutout-${cutoutCounter}`
 }
 
+let manualRowCounter = 0
+function nextManualRowId(): string {
+  manualRowCounter += 1
+  return `manual-row-${manualRowCounter}`
+}
+
 export function useLaminateLayout() {
   const inputs = reactive<LayoutInputs>({
     room: { width: 400, length: 300 },
     expansionGapCm: 1,
     cutouts: [],
+    manualRows: [],
     plank: { length: 120, width: 19 },
     minOffsetCm: 30,
     minPlankLengthCm: 40,
@@ -34,6 +41,15 @@ export function useLaminateLayout() {
     if (idx !== -1) inputs.cutouts.splice(idx, 1)
   }
 
+  function addManualRow() {
+    inputs.manualRows.push({ id: nextManualRowId(), firstCutCm: inputs.plank.length })
+  }
+
+  function removeManualRow(id: string) {
+    const idx = inputs.manualRows.findIndex((r: ManualRowInput) => r.id === id)
+    if (idx !== -1) inputs.manualRows.splice(idx, 1)
+  }
+
   function regenerate() {
     seed.value = randomSeed()
   }
@@ -41,5 +57,5 @@ export function useLaminateLayout() {
   const layout = computed(() => generateLayout(inputs, seed.value))
   const summary = computed(() => computeSummary(layout.value, inputs))
 
-  return { inputs, layout, summary, addCutout, removeCutout, regenerate }
+  return { inputs, layout, summary, addCutout, removeCutout, addManualRow, removeManualRow, regenerate }
 }

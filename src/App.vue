@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import CutoutList from './components/CutoutList.vue'
 import LayoutSvg from './components/LayoutSvg.vue'
+import ManualRowsList from './components/ManualRowsList.vue'
 import RoomForm from './components/RoomForm.vue'
 import SummaryPanel from './components/SummaryPanel.vue'
 import { useLaminateLayout } from './composables/useLaminateLayout'
 
-const { inputs, layout, summary, addCutout, removeCutout, regenerate } = useLaminateLayout()
+const { inputs, layout, summary, addCutout, removeCutout, addManualRow, removeManualRow, regenerate } =
+  useLaminateLayout()
 </script>
 
 <template>
@@ -15,6 +17,7 @@ const { inputs, layout, summary, addCutout, removeCutout, regenerate } = useLami
       <p class="subtitle">Pose à joints perdus — randomized staggered pattern</p>
 
       <RoomForm :inputs="inputs" />
+      <ManualRowsList :manual-rows="inputs.manualRows" @add="addManualRow" @remove="removeManualRow" />
       <CutoutList :cutouts="inputs.cutouts" @add="addCutout" @remove="removeCutout" />
 
       <button type="button" class="regenerate-btn" @click="regenerate">Re-randomize layout</button>
