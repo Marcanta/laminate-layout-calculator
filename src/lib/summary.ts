@@ -12,19 +12,23 @@ export function computeSummary(layout: LayoutResult, inputs: LayoutInputs): Summ
   const cutPlanksCount = planks.filter((p) => p.isCut).length
   const clippedByObstacleCount = planks.filter((p) => p.isClippedByObstacle).length
   const totalPlanksUsed = fullPlanksCount + cutPlanksCount
-  const planksToBuy = Math.ceil(totalPlanksUsed * (1 + inputs.wastePercent / 100))
+  const offcutsReusedCount = planks.filter((p) => p.isReusedOffcut).length
+  const boardsConsumed = totalPlanksUsed - offcutsReusedCount
+  const planksToBuy = Math.ceil(boardsConsumed * (1 + inputs.wastePercent / 100))
 
   const effective = effectiveRoomDims(inputs.room, inputs.expansionGapCm)
   const roomAreaCm2 = effective.width * effective.length
   const netFloorAreaM2 = Math.max(roomAreaCm2 - cutoutAreaCm2(inputs), 0) / 10000
   const plankAreaM2 = (inputs.plank.length * inputs.plank.width) / 10000
-  const coverageAreaM2 = totalPlanksUsed * plankAreaM2
+  const coverageAreaM2 = boardsConsumed * plankAreaM2
 
   return {
     fullPlanksCount,
     cutPlanksCount,
     clippedByObstacleCount,
     totalPlanksUsed,
+    offcutsReusedCount,
+    boardsConsumed,
     planksToBuy,
     netFloorAreaM2,
     plankAreaM2,

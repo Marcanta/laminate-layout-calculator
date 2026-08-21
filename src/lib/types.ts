@@ -46,6 +46,7 @@ export interface PlankPiece {
   isCut: boolean
   isClippedByObstacle: boolean
   isManual: boolean
+  isReusedOffcut: boolean
 }
 
 export interface LayoutResult {
@@ -60,6 +61,8 @@ export interface SummaryStats {
   cutPlanksCount: number
   clippedByObstacleCount: number
   totalPlanksUsed: number
+  offcutsReusedCount: number
+  boardsConsumed: number
   planksToBuy: number
   netFloorAreaM2: number
   plankAreaM2: number

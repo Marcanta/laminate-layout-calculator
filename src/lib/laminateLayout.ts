@@ -29,6 +29,79 @@ function isSliverValid(candidate: number, runAxisLength: number, plankLength: nu
   return lastCut >= minFragmentCm - EPS
 }
 
+interface OffcutEntry {
+  length: number
+  rowThickness: number
+}
+
+function pushOffcut(
+  pool: OffcutEntry[],
+  len: number,
+  plankLength: number,
+  minFragmentCm: number,
+  rowThickness: number,
+): void {
+  if (len >= plankLength - EPS) return // full plank, nothing left over
+  const leftover = plankLength - len
+  if (leftover < minFragmentCm - EPS) return // too short to ever be reused — true scrap
+  pool.push({ length: leftover, rowThickness })
+}
+
+interface TryReuseOffcutParams {
+  pool: OffcutEntry[]
+  runAxisLength: number
+  plankLength: number
+  minFragmentCm: number
+  effectiveMinOffset: number
+  prevFirstCut: number | null
+  rowThickness: number
+}
+
+interface OffcutMatch {
+  index: number
+  used: number
+  leftover: number
+  rowThickness: number
+}
+
+// Best-fit search only — does not mutate the pool. The caller must call
+// commitOffcutMatch() once it has confirmed the matched piece is actually placed (not
+// fully omitted by a cutout); otherwise the pool must stay untouched, as if this match
+// never happened.
+function findOffcutMatch(params: TryReuseOffcutParams): OffcutMatch | null {
+  const { pool, runAxisLength, plankLength, minFragmentCm, effectiveMinOffset, prevFirstCut, rowThickness } = params
+
+  let bestIndex = -1
+  let bestLength = Infinity
+
+  for (let i = 0; i < pool.length; i++) {
+    const entry = pool[i]
+    if (entry.length < minFragmentCm - EPS) continue
+    if (entry.rowThickness < rowThickness - EPS) continue // too narrow to cover this row
+    if (!isSliverValid(entry.length, runAxisLength, plankLength, minFragmentCm)) continue
+    if (prevFirstCut !== null && circularOffset(entry.length, prevFirstCut, plankLength) < effectiveMinOffset - EPS)
+      continue
+
+    if (entry.length < bestLength) {
+      bestLength = entry.length
+      bestIndex = i
+    }
+  }
+
+  if (bestIndex === -1) return null
+  const entry = pool[bestIndex]
+  const used = Math.min(entry.length, runAxisLength)
+  return { index: bestIndex, used, leftover: entry.length - used, rowThickness: entry.rowThickness }
+}
+
+function commitOffcutMatch(pool: OffcutEntry[], match: OffcutMatch, minFragmentCm: number): void {
+  if (match.leftover >= minFragmentCm - EPS) {
+    pool[match.index] = { length: match.leftover, rowThickness: match.rowThickness }
+  } else {
+    pool.splice(match.index, 1)
+  }
+}
+
 interface PickFirstCutParams {
   rowIndex: number
   runAxisLength: number
@@ -268,23 +341,43 @@ export function generateLayout(inputs: LayoutInputs, seed: number): LayoutResult
   }
 
   const planks: PlankPiece[] = []
+  const offcutPool: OffcutEntry[] = []
   let prevFirstCut: number | null = null
   let rowOffset = 0
 
   rowThicknesses.forEach((rowThickness, rowIndex) => {
     const manualRow: ManualRowInput | undefined = manualRows[rowIndex]
-    const firstCut = manualRow
-      ? validateManualFirstCut({
-          rowIndex,
-          firstCutCm: manualRow.firstCutCm,
-          runAxisLength,
-          plankLength,
-          minFragmentCm,
-          effectiveMinOffset,
-          prevFirstCut,
-          warnings,
-        })
-      : pickFirstCut({
+    let isReusedFirstCut = false
+    let firstCut: number
+    let offcutMatch: OffcutMatch | null = null
+
+    if (manualRow) {
+      firstCut = validateManualFirstCut({
+        rowIndex,
+        firstCutCm: manualRow.firstCutCm,
+        runAxisLength,
+        plankLength,
+        minFragmentCm,
+        effectiveMinOffset,
+        prevFirstCut,
+        warnings,
+      })
+    } else {
+      const match = findOffcutMatch({
+        pool: offcutPool,
+        runAxisLength,
+        plankLength,
+        minFragmentCm,
+        effectiveMinOffset,
+        prevFirstCut,
+        rowThickness,
+      })
+      if (match !== null) {
+        offcutMatch = match
+        firstCut = match.used
+        isReusedFirstCut = true
+      } else {
+        firstCut = pickFirstCut({
           rowIndex,
           runAxisLength,
           plankLength,
@@ -294,6 +387,8 @@ export function generateLayout(inputs: LayoutInputs, seed: number): LayoutResult
           rand,
           warnings,
         })
+      }
+    }
     prevFirstCut = firstCut
 
     let pos = 0
@@ -301,15 +396,21 @@ export function generateLayout(inputs: LayoutInputs, seed: number): LayoutResult
     let plankIndex = 0
     while (pos < runAxisLength - EPS) {
       const remaining = runAxisLength - pos
-      const nominalLen = isFirstPlank ? firstCut : plankLength
+      const isStarter = isFirstPlank
+      const nominalLen = isStarter ? firstCut : plankLength
       const len = Math.min(nominalLen, remaining)
       isFirstPlank = false
 
       const localRect = buildRect(orientation, rowOffset, pos, rowThickness, len)
       const rect: Rect = { x: localRect.x + gap, y: localRect.y + gap, width: localRect.width, height: localRect.height }
       const { omit, clipped } = classifyAgainstCutouts(rect, cutouts)
+      const isReusedOffcut = isStarter && isReusedFirstCut
 
       if (!omit) {
+        if (isStarter && offcutMatch) {
+          commitOffcutMatch(offcutPool, offcutMatch, minFragmentCm)
+        }
+
         const isCut = len < plankLength - EPS || rowThickness < plankWidth - EPS || clipped
         planks.push({
           id: `row${rowIndex}-p${plankIndex}`,
@@ -321,7 +422,15 @@ export function generateLayout(inputs: LayoutInputs, seed: number): LayoutResult
           isCut,
           isClippedByObstacle: clipped,
           isManual: Boolean(manualRow),
+          isReusedOffcut,
         })
+
+        // Every piece cut from a fresh board (i.e. not itself a reused offcut) that comes
+        // up short of a full plank donates its leftover back to the pool — this covers
+        // both a freshly-cut row starter and a row's forced last-plank trim.
+        if (!isReusedOffcut) {
+          pushOffcut(offcutPool, len, plankLength, minFragmentCm, rowThickness)
+        }
       }
 
       plankIndex += 1

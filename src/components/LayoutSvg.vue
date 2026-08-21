@@ -54,11 +54,11 @@ const insetRect = computed(() => {
         :y="plank.y"
         :width="plank.width"
         :height="plank.height"
-        :class="['plank', plank.row % 2 === 0 ? 'plank-even' : 'plank-odd', { 'plank-cut': plank.isCut, 'plank-manual': plank.isManual }]"
+        :class="['plank', plank.row % 2 === 0 ? 'plank-even' : 'plank-odd', { 'plank-cut': plank.isCut, 'plank-manual': plank.isManual, 'plank-reused': plank.isReusedOffcut }]"
         :stroke-width="strokeWidth"
         vector-effect="non-scaling-stroke"
       >
-        <title>Row {{ plank.row + 1 }} · plank {{ i + 1 }} · {{ plank.width.toFixed(1) }}cm x {{ plank.height.toFixed(1) }}cm{{ plank.isCut ? ' (cut)' : '' }}{{ plank.isClippedByObstacle ? ' — cut around obstacle' : '' }}{{ plank.isManual ? ' — manual row' : '' }}</title>
+        <title>Row {{ plank.row + 1 }} · plank {{ i + 1 }} · {{ plank.width.toFixed(1) }}cm x {{ plank.height.toFixed(1) }}cm{{ plank.isCut ? ' (cut)' : '' }}{{ plank.isClippedByObstacle ? ' — cut around obstacle' : '' }}{{ plank.isManual ? ' — manual row' : '' }}{{ plank.isReusedOffcut ? ' — reused offcut' : '' }}</title>
       </rect>
     </g>
 
@@ -124,6 +124,10 @@ const insetRect = computed(() => {
 
 .plank-manual {
   stroke: #2f7d5f;
+}
+
+.plank-reused {
+  stroke: #2f6fb0;
 }
 
 .cutout {
