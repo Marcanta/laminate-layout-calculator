@@ -1,3 +1,3 @@
 # Improvements
 
-- Save the current layout, and maybe export it.
+- Export the current layout (PDF/CSV/image).
